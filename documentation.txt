@@ -1,0 +1,449 @@
+# CrediCore Banking Portal
+
+A full-stack, enterprise-grade digital banking application featuring a modern **Angular** frontend and a secure **Spring Boot** REST API backend.
+
+---
+
+## Table of Contents
+
+1. [Project Overview](#1-project-overview)
+2. [System Architecture](#2-system-architecture)
+3. [Technology Stack](#3-technology-stack)
+4. [Backend — Spring Boot API](#4-backend--spring-boot-api)
+   - [Project Structure](#41-project-structure)
+   - [API Endpoints](#42-api-endpoints)
+   - [Data Models](#43-data-models)
+   - [Security Design](#44-security-design)
+   - [Key Dependencies](#45-key-dependencies-summary)
+5. [Frontend — Angular UI](#5-frontend--angular-ui)
+   - [Project Structure](#51-project-structure)
+   - [Pages & Routes](#52-pages--routes)
+   - [Component Catalogue](#53-component-catalogue)
+   - [Services & Guards](#54-services--guards)
+   - [Key Dependencies](#55-key-dependencies-summary)
+6. [Features](#6-features)
+7. [Design System](#7-design-system)
+8. [Getting Started](#8-getting-started)
+
+---
+
+## 1. Project Overview
+
+CrediCore is a full-featured digital banking portal designed to give users a premium, modern, and secure banking experience. Inspired by HDFC NetBanking, Revolut, Stripe Dashboard, and CRED, it provides a rich set of financial operations backed by enterprise-grade security.
+
+| Attribute | Detail |
+|---|---|
+| Application Name | CrediCore Banking Portal |
+| Type | Full-Stack Web Application |
+| Frontend | Angular 18 SPA |
+| Backend | Spring Boot 3.3.1 REST API |
+| Database | MySQL |
+| Cache | Redis (idempotency + performance) |
+| Auth | JWT (JSON Web Tokens) + OTP |
+
+---
+
+## 2. System Architecture
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                  Browser (Angular 18 SPA)                 │
+│  Landing Page → Auth → Dashboard → Transactions           │
+└─────────────────────────┬───────────────────────────────-─┘
+                           │ HTTPS REST (JWT Bearer Token)
+┌─────────────────────────▼──────────────────────────────-──┐
+│               Spring Boot 3.3.1 REST API                   │
+│  Controllers → Services → Repositories → Entities          │
+│  ┌──────────────┐   ┌─────────────┐   ┌────────────────┐  │
+│  │ Spring Sec.  │   │  JWT Filter │   │ Cache (Redis)  │  │
+│  └──────────────┘   └─────────────┘   └────────────────┘  │
+└────────────┬────────────────────────────────────┬─────────┘
+             │                                     │
+      ┌──────▼──────┐                       ┌──────▼───────┐
+      │    MySQL    │                       │    Redis     │
+      │  (Primary)  │                       │   (Cache)    │
+      └─────────────┘                       └──────────────┘
+```
+
+---
+
+## 3. Technology Stack
+
+### Backend
+
+| Technology | Version | Purpose |
+|---|---|---|
+| Java | 17 | Runtime |
+| Spring Boot | 3.3.1 | Application framework |
+| Spring Security | Bundled | Authentication & authorization |
+| Spring Data JPA | Bundled | ORM & database access |
+| Spring Mail | Bundled | Email notifications & bank statements |
+| Spring Cache + Redis | Bundled | Idempotency & performance caching |
+| Spring Actuator | Bundled | Health monitoring |
+| MySQL Connector | Latest | Relational database driver |
+| JJWT | Latest | JWT creation & validation |
+| Lombok | 1.18.34 | Boilerplate reduction |
+| MapStruct | 1.6.0-Beta2 | DTO ↔ Entity mapping |
+| libphonenumber | 8.13.38 | Phone number validation |
+| GreenMail | 2.0.0 | Email testing (JUnit5) |
+
+### Frontend
+
+| Technology | Version | Purpose |
+|---|---|---|
+| Angular | 18.0.5 | SPA Framework |
+| Angular Material | 18.2.14 | UI component library |
+| Angular CDK | 18.2.14 | Component dev kit |
+| Angular Animations | 18.0.5 | Micro-animations |
+| RxJS | 7.8.1 | Reactive programming |
+| Chart.js + ng2-charts | 4.4.3 / 6.0.1 | Data visualisation |
+| jwt-decode | 4.0.0 | JWT parsing on client |
+| angular-toastify | 1.0.7 | Toast notifications |
+| ng-otp-input | 1.9.3 | OTP input field |
+| libphonenumber-js | 1.11.4 | Phone validation |
+| ngx-countries-dropdown | 2.1.0 | Country selector |
+| SheetJS (xlsx) | 0.20.2 | Excel transaction export |
+| TailwindCSS | 3.x | Utility CSS (configured) |
+| Font Awesome | CDN | Icon library |
+
+---
+
+## 4. Backend — Spring Boot API
+
+### 4.1 Project Structure
+
+```
+BankingPortal-API/
+└── src/main/java/com/webapp/bankingportal/
+    ├── BankingportalApplication.java   # Entry point
+    ├── config/                         # Security, Cache, CORS, Redis config
+    ├── controller/                     # REST controllers
+    │   ├── AccountController.java
+    │   ├── AuthController.java
+    │   ├── DashboardController.java
+    │   ├── UserController.java
+    │   └── GlobalExceptionHandler.java
+    ├── dto/                            # Request/Response data transfer objects
+    ├── entity/                         # JPA entities (DB tables)
+    ├── exception/                      # Custom exception classes
+    ├── mapper/                         # MapStruct DTO ↔ Entity mappers
+    ├── repository/                     # Spring Data JPA repositories
+    ├── security/                       # JWT filter & auth entry point
+    ├── service/                        # Business logic layer
+    ├── type/                           # Enums / type definitions
+    └── util/                           # Helpers (JsonUtil, LoggedinUser, ApiMessages)
+```
+
+### 4.2 API Endpoints
+
+#### 🔐 Authentication — `/api/users`
+
+| Method | Endpoint | Description | Auth Required |
+|---|---|---|---|
+| POST | `/api/users/register` | Register a new user | ❌ |
+| POST | `/api/users/login` | Login with credentials → JWT | ❌ |
+| POST | `/api/users/generate-otp` | Send OTP to registered email | ❌ |
+| POST | `/api/users/verify-otp` | Verify OTP and issue JWT | ❌ |
+| POST | `/api/users/update` | Update user profile | ✅ |
+| GET | `/api/users/logout` | Invalidate JWT token | ✅ |
+
+#### 🔑 Password Reset — `/api/auth`
+
+| Method | Endpoint | Description | Auth Required |
+|---|---|---|---|
+| POST | `/api/auth/password-reset/send-otp` | Send OTP for password reset | ❌ |
+| POST | `/api/auth/password-reset/verify-otp` | Verify OTP → issue reset token | ❌ |
+| POST | `/api/auth/password-reset` | Reset password with valid token | ❌ |
+
+#### 📊 Dashboard — `/api/dashboard`
+
+| Method | Endpoint | Description | Auth Required |
+|---|---|---|---|
+| GET | `/api/dashboard/user` | Get current logged-in user info | ✅ |
+| GET | `/api/dashboard/account` | Get current account balance & details | ✅ |
+
+#### 💳 Account Transactions — `/api/account`
+
+| Method | Endpoint | Description | Auth Required |
+|---|---|---|---|
+| GET | `/api/account/pin/check` | Check if account PIN is created | ✅ |
+| POST | `/api/account/pin/create` | Create a new transaction PIN | ✅ |
+| POST | `/api/account/pin/update` | Update existing transaction PIN | ✅ |
+| POST | `/api/account/deposit` | Deposit funds into own account | ✅ |
+| POST | `/api/account/withdraw` | Withdraw funds from own account | ✅ |
+| POST | `/api/account/fund-transfer` | Transfer funds to another account | ✅ |
+| GET | `/api/account/transactions` | Get full transaction history | ✅ |
+| GET | `/api/account/send-statement` | Email bank statement as PDF/HTML | ✅ |
+
+> **Idempotency:** All mutating endpoints (deposit, withdraw, fund-transfer, pin/create, pin/update) are protected with Redis-backed idempotency keys to prevent duplicate transactions.
+
+### 4.3 Data Models
+
+**User**
+
+| Field | Type | Description |
+|---|---|---|
+| id | Long (PK) | Auto-generated |
+| name | String | Full name |
+| email | String (unique) | Login identifier |
+| password | String | BCrypt hashed |
+| phoneNumber | String | Validated via libphonenumber |
+| countryCode | String | International country prefix |
+| address | String | Residential address |
+
+**Account**
+
+| Field | Type | Description |
+|---|---|---|
+| id | Long (PK) | Auto-generated |
+| accountNumber | String (unique) | System-generated account number |
+| balance | Double | Current available balance |
+| pin | String | BCrypt hashed transaction PIN |
+| user | User (FK) | Owning user |
+
+**Transaction**
+
+| Field | Type | Description |
+|---|---|---|
+| id | Long (PK) | Auto-generated |
+| transactionType | Enum (DEPOSIT, WITHDRAWAL, TRANSFER) | Type of transaction |
+| amount | Double | Transaction amount |
+| timestamp | LocalDateTime | When the transaction occurred |
+| account | Account (FK) | Associated account |
+
+**OtpInfo**
+
+| Field | Type | Description |
+|---|---|---|
+| id | Long (PK) | Auto-generated |
+| otp | String | Hashed OTP value |
+| expiry | LocalDateTime | OTP expiry time |
+| accountNumber | String | Target account |
+
+**Token / PasswordResetToken** — used for JWT token tracking and invalidation on logout/password reset.
+
+### 4.4 Security Design
+
+- **JWT Authentication** — All protected endpoints require a `Bearer <token>` in the `Authorization` header.
+- **JWT Filter** (`JwtAuthenticationFilter`) — Intercepts every request, validates the token, and sets the `SecurityContext`.
+- **Entry Point** (`JwtAuthenticationEntryPoint`) — Returns `401 Unauthorized` for unauthenticated requests.
+- **Password Hashing** — User passwords and transaction PINs are hashed with BCrypt.
+- **OTP Flow** — Time-limited 6-digit OTPs sent via email for login and password reset.
+- **Idempotency Cache** — Redis-backed request caching prevents duplicate financial operations.
+
+### 4.5 Key Dependencies Summary
+
+```
+Spring Boot 3.3.1 (Java 17)
+├── spring-boot-starter-web          → REST API
+├── spring-boot-starter-security     → Auth & HTTPS
+├── spring-boot-starter-data-jpa     → MySQL ORM
+├── spring-boot-starter-mail         → Email (SMTP)
+├── spring-boot-starter-cache        → Idempotency
+├── spring-boot-starter-data-redis   → Cache backend
+├── spring-boot-starter-actuator     → Health endpoints
+├── jjwt (api + impl + jackson)      → JWT tokens
+├── mysql-connector-j                → MySQL driver
+├── lombok                           → Code generation
+└── mapstruct                        → DTO mapping
+```
+
+---
+
+## 5. Frontend — Angular UI
+
+### 5.1 Project Structure
+
+```
+BankingPortal-UI/src/app/
+├── animations/           # Angular animation definitions (fadeIn, slideIn, etc.)
+├── guards/               # AuthGuard — protects authenticated routes
+├── services/             # API service, Auth service
+├── util/                 # Helper utilities
+├── auth.interceptor.ts   # HTTP interceptor — attaches JWT to every request
+├── app.module.ts         # Root Angular module
+├── app-routing.module.ts # Client-side routing
+└── components/           # All UI components (26 total)
+```
+
+### 5.2 Pages & Routes
+
+| Route | Component | Auth Required | Description |
+|---|---|---|---|
+| `/` | HomeComponent | ❌ | Premium landing page |
+| `/login` | LoginComponent | ❌ | User login |
+| `/register` | RegisterComponent | ❌ | New account registration |
+| `/login/otp` | OtpComponent | ❌ | OTP verification |
+| `/forget-password` | ResetPasswordComponent | ❌ | Password recovery |
+| `/dashboard` | DashboardComponent | ✅ | Main dashboard |
+| `/account/deposit` | DepositComponent | ✅ | Deposit money |
+| `/account/withdraw` | WithdrawComponent | ✅ | Withdraw money |
+| `/account/fund-transfer` | FundTransferComponent | ✅ | Transfer to another account |
+| `/account/pin` | AccountPinComponent | ✅ | Create / update transaction PIN |
+| `/account` | AccountdetailcardComponent | ✅ | Account details view |
+| `/account/transaction-history` | TransactionHistoryComponent | ✅ | Full transaction log |
+| `/user/profile` | ProfileComponent | ✅ | User profile management |
+| `/**` | NotfoundpageComponent | ❌ | 404 fallback |
+
+### 5.3 Component Catalogue
+
+| Component | Description |
+|---|---|
+| HomeComponent | Premium landing page with hero, 3D rotating cards, features, solutions tabs, plans, partner offers, reviews, footer |
+| HeaderComponent | Top navigation — logo, nav links, user actions, logout |
+| DashboardComponent | Main overview with balance card, stats, transaction summary |
+| DepositComponent | 3-panel enterprise deposit form with live fee preview |
+| WithdrawComponent | 3-panel enterprise withdrawal form |
+| FundTransferComponent | 3-panel enterprise fund transfer with beneficiary lookup |
+| AccountPinComponent | PIN creation and update form |
+| TransactionHistoryComponent | Paginated, filterable transaction table with chart integration |
+| ProfileComponent | User profile view and update |
+| LoginComponent | Login form with JWT handling |
+| RegisterComponent | Multi-field user registration |
+| OtpComponent | 6-digit OTP entry (ng-otp-input) |
+| ResetPasswordComponent | Forgot password flow |
+| AccountdetailcardComponent | Account number, balance, limit card |
+| UserprofilecardComponent | User avatar and details widget |
+| TransactionComponent | Single transaction row |
+| DailyTransactionChart | Chart.js bar chart — daily spend |
+| DailyTransactionPiechart | Chart.js pie — spend breakdown |
+| MonthlyTransactionChart | Chart.js line — monthly trend |
+| TransactionChart | Combined chart widget |
+| TransactionLinechart | Line chart for portfolio |
+| DownloadTransactions | Excel export via SheetJS |
+| SidebarComponent | Glassmorphic floating sidebar |
+| LoaderComponent | Global loading spinner |
+| NotfoundpageComponent | 404 page |
+
+### 5.4 Services & Guards
+
+| Name | Type | Description |
+|---|---|---|
+| ApiService | Service | All HTTP calls to the REST API |
+| AuthService | Service | JWT storage, login state, token decode |
+| AuthInterceptor | HTTP Interceptor | Injects `Authorization: Bearer <token>` header |
+| AuthGuard | Route Guard | Redirects unauthenticated users to `/login` |
+
+### 5.5 Key Dependencies Summary
+
+```
+Angular 18 (Node.js + TypeScript)
+├── @angular/router          → Client-side routing
+├── @angular/forms           → Reactive forms & validation
+├── @angular/animations      → Micro-animations (fadeIn, slideIn)
+├── @angular/material + CDK  → UI component library
+├── chart.js + ng2-charts    → Financial data charts
+├── jwt-decode               → Parse JWT payload
+├── ng-otp-input             → OTP field component
+├── angular-toastify         → Toast notification system
+├── libphonenumber-js        → Phone number validation
+├── ngx-countries-dropdown   → Country selector
+├── SheetJS (xlsx)           → Excel export of transactions
+└── rxjs                     → Reactive streams & HTTP observables
+```
+
+---
+
+## 6. Features
+
+### Authentication & Security
+- ✅ User registration with email, phone (international), and address
+- ✅ JWT-based stateless authentication
+- ✅ OTP login via email (time-limited 6-digit code)
+- ✅ Forgot password with OTP + reset token flow
+- ✅ Transaction PIN (separate from login password, BCrypt hashed)
+- ✅ Auto logout + JWT invalidation on server
+
+### Banking Transactions
+- ✅ **Deposit Money** — quick amount chips (₹500, ₹1000, ₹5000, ₹10000, Custom), fee/GST preview
+- ✅ **Withdraw Money** — instant withdrawal with PIN verification
+- ✅ **Fund Transfer** — transfer to any registered account number, live beneficiary name lookup
+- ✅ **Idempotent operations** — Redis cache prevents duplicate transactions
+
+### Dashboard & Analytics
+- ✅ Real-time account balance display
+- ✅ Transaction history with category filters
+- ✅ Daily transaction bar chart
+- ✅ Category-wise pie chart
+- ✅ Monthly trend line chart
+- ✅ Excel export of transaction history (SheetJS)
+- ✅ Email bank statement delivery
+
+### Landing Page
+- ✅ Premium hero section with custom background image
+- ✅ 3D rotating credit card carousel (CSS 3D + keyframes)
+- ✅ Features grid
+- ✅ Tabbed "Banking Solutions" (Trending, Accounts, Deposits, Cards, Loans, Insurance, Investments)
+- ✅ Pricing plans (Silver / Gold / Platinum)
+- ✅ Partner offers (Travel, Dining, Shopping)
+- ✅ Customer reviews / testimonials
+- ✅ Smooth-scroll navigation header with Sign In / Open Account CTAs
+
+---
+
+## 7. Design System
+
+The UI uses a cohesive dark-first premium design language:
+
+| Token | Value | Usage |
+|---|---|---|
+| `--color-bg` | `#0B1220` | Page background |
+| `--color-surface` | `#111827` | Card/panel background |
+| `--color-primary` | `#6366f1` (Indigo-500) | Buttons, active states |
+| `--color-accent-light` | `#06B6D4` (Cyan-500) | CTAs, highlights |
+| `--color-text` | `#F9FAFB` | Primary text |
+| `--color-text-muted` | `#9CA3AF` | Secondary text |
+| `--color-border` | `rgba(255,255,255,0.08)` | Card borders |
+
+**UI Patterns**
+- **Glassmorphism** — `rgba(255,255,255,0.05)` fill + `backdrop-filter: blur(24px)` on panels
+- **3-Panel Layout** — Left (account info) → Center (action form) → Right (timeline / notifications)
+- **Floating Labels** — CSS-only animated form labels
+- **Micro-animations** — `@angular/animations` `slideIn`, `fadeIn`, `slideInUp`
+- **Font** — Google Fonts, Inter (system fallback: sans-serif)
+- **Icons** — Font Awesome 6 (free tier via CDN)
+
+---
+
+## 8. Getting Started
+
+### Prerequisites
+- Java 17+
+- Node.js 18+ & npm
+- MySQL 8.x
+- Redis 7.x
+- Angular CLI (`npm install -g @angular/cli`)
+
+### Backend Setup
+
+```bash
+cd BankingPortal-API
+# Configure database in src/main/resources/application.properties
+# spring.datasource.url=jdbc:mysql://localhost:3306/bankingportal
+# spring.datasource.username=root
+# spring.datasource.password=yourpassword
+
+# Run the Spring Boot app
+./mvnw spring-boot:run
+# API runs at: http://localhost:8080
+```
+
+### Frontend Setup
+
+```bash
+cd BankingPortal-UI
+# Install dependencies
+npm install
+
+# Run development server
+npm run start
+# App runs at: http://localhost:4200
+```
+
+### Environment Configuration
+
+The Angular app expects the API at `http://localhost:8080` by default (configured in `ApiService`). Adjust the base URL for staging/production deployments.
+
+---
+
+© 2026 CrediCore. All rights reserved.
